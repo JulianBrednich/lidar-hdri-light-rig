@@ -6,7 +6,12 @@ From one on-set HDRI and a LiDAR scan of the set, the tool detects the light sou
 
 [![Demo video: the tool in Houdini](media/hdri-setup10.jpg)](https://julianbrednich.github.io/Portfolio/#lighting-tool)
 
-*▶ [Watch the 30-second demo video](https://julianbrednich.github.io/Portfolio/#lighting-tool) on my portfolio. The image above is the HDRI of one evaluation setup with 20 lights.*
+
+https://github.com/user-attachments/assets/7370abba-4f38-4e1e-b838-44a1fc367af9
+
+
+
+*The image above is the HDRI of one evaluation setup with 20 lights.*
 
 ---
 
