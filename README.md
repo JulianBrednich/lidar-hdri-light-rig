@@ -4,9 +4,9 @@ Houdini tool that turns an on-set HDRI and a LiDAR scan into a textured **USD li
 
 From one on-set HDRI and a LiDAR scan of the set, the tool detects the light sources, paints them out of the HDRI, places textured area lights in 3D and exports the rig as USD. The thesis evaluates it on six real studio setups.
 
-[![Demo video: the tool in Houdini](media/hdri-setup10.jpg)](media/light-rig-demo.mp4)
+[![Demo video: the tool in Houdini](media/hdri-setup10.jpg)](https://julianbrednich.github.io/Portfolio/#lighting-tool)
 
-*Demo video (30 s): [media/light-rig-demo.mp4](media/light-rig-demo.mp4) · also on my [portfolio](https://julianbrednich.github.io/Portfolio/#lighting-tool). The image above is the HDRI of one evaluation setup with 20 lights.*
+*▶ [Watch the 30-second demo video](https://julianbrednich.github.io/Portfolio/#lighting-tool) on my portfolio. The image above is the HDRI of one evaluation setup with 20 lights.*
 
 ---
 
