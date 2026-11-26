@@ -4,6 +4,8 @@ Houdini tool that turns an on-set HDRI and a LiDAR scan into a textured **USD li
 
 From one on-set HDRI and a LiDAR scan of the set, the tool detects the light sources, paints them out of the HDRI, places textured area lights in 3D and exports the rig as USD. The thesis evaluates it on six real studio setups.
 
+**New:** an alternative HDRI-only mode estimates the set geometry with the panoramic depth model DA360 instead of a LiDAR scan. It needs no scan on set but places the lights less precisely. See [Update: HDRI-only mode with DA360](#update-hdri-only-mode-with-da360-no-lidar).
+
 📄 [Full thesis (German, PDF)](docs/bachelor-thesis-brednich-2025.pdf)
 
 https://github.com/user-attachments/assets/7370abba-4f38-4e1e-b838-44a1fc367af9
