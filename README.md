@@ -70,6 +70,100 @@ The tool automates most of the workflow, but not all of it:
 
 It depends on the surrounding HDA network (relative node paths, a custom light node), so it is meant for reading, not for running on its own.
 
+## Update: HDRI-only mode with DA360 (no LiDAR)
+
+Version 11 of the HDA adds a second geometry source: instead of a LiDAR scan, the 3D geometry is **estimated from the HDRI itself** with the panoramic depth model [DA360](https://github.com/Insta360-Research-Team/DA360) (Insta360 Research, MIT license). A switch on the HDA selects *LiDAR scan* (the original workflow, unchanged) or *DA360 (from HDRI)*.
+
+No scan is needed on set any more, only the HDRI and the height of the camera. The trade-off is precision: lights are found almost as reliably as with LiDAR, but their position is off by decimetres instead of centimetres.
+
+![HDRI and estimated depth](media/da360-hdri-depth.jpg)
+
+### How it works
+
+1. **Depth from the HDRI.** A button on the HDA (*Compute depth*) runs [`da360_houdini.py`](python/da360_houdini.py) in an external Python with PyTorch. The script downsamples the HDRI to the model resolution (1036 × 518), runs DA360 and gets a depth value for every pixel. This takes about 10 s on a MacBook GPU. Houdini itself never loads the 1.3 GB model.
+2. **Point cloud.** Every pixel becomes a point. Its direction comes from the same polar projection the tool already uses for the textures, its distance from DA360. DA360 only predicts relative depth, so the cloud is scaled until the floor sits at the known camera height. Each point keeps the linear HDR colour of its pixel.
+3. **Same light rig as before.** The point cloud replaces the LiDAR scan. Bright points are grouped into light sources, and the remaining steps run exactly as in the LiDAR mode: grid fitting, texture crop, area lights and USD export. Since every detected point was seen from the HDRI camera, the light planes face the camera.
+
+### Results
+
+Evaluated on six studio setups selected from the thesis evaluation (61 lights), against the lights placed from the high-resolution LiDAR scan.
+
+| | LiDAR mode (thesis) | DA360 mode |
+|---|---|---|
+| Needs on set | HDRI + LiDAR scan | HDRI + camera height |
+| Lights detected (mean recall) | 96 % | 89 % |
+| Precision | 89 % | 64 % |
+| Mean position deviation per axis | 2.5 – 3.3 cm | 24 / 28 / 45 cm (x / y / z) |
+| Mean size deviation (width / height) | 25 / 25 cm | 33 / 28 cm |
+| Geometry step | scan on set (1–3 min per position) | ~10 s per HDRI |
+
+- **Direction is accurate, distance is not.** A light's direction is right to within 2–4°. Almost the whole position error is in the distance. Lights within about 2 m of the camera are 25–40 cm off (median over all lights: 39 cm). Small ceiling and background lights can be off by 1–2 m.
+- **Detection** is close to the LiDAR mode. Precision is lower because brightly lit surfaces and highlights sometimes count as extra lights, which have to be deleted by hand.
+- **Size** is in a similar range. In some setups it is even closer than in the LiDAR mode, where the scan geometry of a fixture tends to be larger than its emitting surface.
+
+![Light planes from the HDRI vs. LiDAR-based positions](media/da360-lights-vs-lidar.png)
+
+*Setup 08: light planes from the HDRI alone (orange) and the light positions from the LiDAR workflow (blue). The scan is only drawn for reference.*
+
+### Which depth model?
+
+Three current panoramic depth models were tested on the studio setups against the LiDAR scans:
+
+| | [DAP](https://github.com/Insta360-Research-Team/DAP) | [DepthMaster](https://github.com/PolyU-VCLab/DepthMaster) | **[DA360](https://github.com/Insta360-Research-Team/DA360)** |
+|---|---|---|---|
+| Floor (relative error) | 11–19 % | **5–6 %** | **6–7 %** |
+| Light distance (mean error factor) | 54 % | 97 % | **36 %** |
+| Runtime per HDRI (Mac) | ~7 s | ~3.5 min | **~2 s** |
+| License | CC BY-NC | MIT | **MIT** |
+
+DepthMaster has the best published benchmark scores, but these come from ordinary interiors. In a dark studio with bright lights it places the lights much too close. DAP closes the dark studio into a small box about 2–3 m around the camera. DA360 captures the room most realistically and places the lights best, so the HDA uses it.
+
+![Model comparison, top view](media/model-comparison-topview.png)
+
+### Code
+
+[`python/da360_houdini.py`](python/da360_houdini.py) runs on its own as well:
+
+```bash
+python3 da360_houdini.py --hdri set.hdr \
+    --da360 /path/to/DA360 --weights /path/to/DA360_large.pth \
+    --camera-height 1.48 --out set_da360.ply
+```
+
+The core of the script: a depth per pixel, a direction per pixel in the tool's polar projection, and the floor as the scale reference.
+
+```python
+depth = run_da360(img, da360_root, weights)          # relative radial depth, H x W
+
+# direction per pixel, same convention as the tool's polar UV projection (Y-up)
+u = (np.arange(w) + 0.5) / w
+v = 1.0 - (np.arange(h) + 0.5) / h
+u, v = np.meshgrid(u, v)
+az, el = (u - 0.5) * 2 * np.pi, (v - 0.5) * np.pi
+dirs = np.stack([-np.sin(az) * np.cos(el), np.sin(el), np.cos(az) * np.cos(el)], -1)
+
+points = depth[..., None] * dirs
+scale = camera_height / -floor_height(points)        # floor = most common height below the camera
+points *= scale
+```
+
+The button on the HDA starts the script as a separate process and reloads the point cloud afterwards:
+
+```python
+cmd = [python, script, "--hdri", hdri, "--da360", da360_dir, "--weights", weights,
+       "--out", out, "--camera-height", str(node.parm("da360_camera_height").eval())]
+with hou.InterruptableOperation("DA360: compute depth", open_interrupt_dialog=True):
+    subprocess.run(cmd, check=True, env=clean_env())  # external Python with torch
+node.node("DA360_POINTS").parm("reload").pressButton()
+```
+
+### Limitations
+
+- **Position** is the weak point.
+- **Rotation:** every light plane faces the HDRI camera. That fits lights aimed at the set, but not lights that shine sideways past it.
+- **Setup:** it needs a Python environment with PyTorch, the DA360 code and its weights (about 1.3 GB). The HDA takes all three as paths.
+- **Scope:** tested on six studio setups selected from the thesis evaluation. Outdoor sets were not tested.
+
 ## Tools
 
 Houdini (SOPs, COPs, VEX, Python), USD, Faro Focus LiDAR, Ricoh Theta Z1.
